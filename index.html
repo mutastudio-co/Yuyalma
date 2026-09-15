@@ -126,6 +126,30 @@ input, select{ font-family:inherit; }
   color: rgba(227,231,216,.55);
   line-height:1.5;
 }
+.admin-toggle{
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px solid rgba(227,231,216,.16);
+  font-size:11px;
+  letter-spacing:.03em;
+  color: rgba(227,231,216,.7);
+  cursor:pointer;
+  user-select:none;
+}
+.admin-toggle:hover{ color:#fff; }
+.mode-badge{
+  display:inline-block;
+  font-size:10.5px;
+  font-weight:700;
+  letter-spacing:.05em;
+  padding:2px 9px;
+  border-radius:20px;
+  margin-left:8px;
+  vertical-align:middle;
+  background: var(--oliva-100);
+  color: var(--oliva-800);
+}
+body.is-admin .mode-badge{ background: var(--terra-light); color: var(--terra-dark); }
 
 /* ---------- Main ---------- */
 .main{
@@ -657,13 +681,14 @@ window.SUPABASE_ANON_KEY = "sb_publishable_ZZWK-lWXf8J61UTlxLLaQw_hTygrgkk";
       Pequeñas elecciones · grandes cambios<br>
       <span id="syncStatusText">Cargando…</span>
     </div>
+    <div class="admin-toggle" id="adminToggle" title="Acceso administrador">🔒 Modo administrador</div>
   </aside>
 
   <!-- MAIN -->
   <main class="main">
     <div class="topbar">
       <div>
-        <h1>Lista de precios</h1>
+        <h1>Lista de precios<span class="mode-badge" id="modeBadge">Vista cliente</span></h1>
         <div class="lede">Gestioná el catálogo de Yuyalma: agregá, editá, actualizá precios y exportá la lista lista para compartir.</div>
       </div>
       <div class="toolbar">
@@ -715,12 +740,12 @@ window.SUPABASE_ANON_KEY = "sb_publishable_ZZWK-lWXf8J61UTlxLLaQw_hTygrgkk";
       <table class="price-table">
         <thead>
           <tr>
-            <th class="center" style="width:34px"><input type="checkbox" class="checkbox" id="selectAll"></th>
+            <th class="center" style="width:34px" id="thCheckbox"><input type="checkbox" class="checkbox" id="selectAll"></th>
             <th>Producto</th>
             <th style="width:130px">Categoría</th>
             <th class="num" style="width:120px">Precio</th>
             <th class="center" style="width:70px">Tend.</th>
-            <th class="num" style="width:150px">Acciones</th>
+            <th class="num" style="width:150px" id="thActions">Acciones</th>
           </tr>
         </thead>
         <tbody id="tableBody"></tbody>
@@ -1133,6 +1158,33 @@ let state = {
 };
 
 function uid(){ return state.nextId++; }
+const ADMIN_PIN = "KodaSiena2026"; // clave de acceso al modo administrador
+const ADMIN_KEY = "yuyalma_admin_v1";
+function isAdmin(){
+  try{ return localStorage.getItem(ADMIN_KEY) === '1'; }
+  catch(e){ return false; }
+}
+function setUIMode(){
+  const admin = isAdmin();
+  document.body.classList.toggle('is-admin', admin);
+  ['btnHistoryGlobal','btnCats','btnBulk','btnAdd'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = admin ? '' : 'none';
+  });
+  const thCheckbox = document.getElementById('thCheckbox');
+  if(thCheckbox) thCheckbox.style.display = admin ? '' : 'none';
+  const thActions = document.getElementById('thActions');
+  if(thActions) thActions.style.display = admin ? '' : 'none';
+  const badge = document.getElementById('modeBadge');
+  if(badge) badge.textContent = admin ? 'Vista administrador' : 'Vista cliente';
+  const lede = document.querySelector('.topbar .lede');
+  if(lede) lede.textContent = admin
+    ? 'Gestioná el catálogo de Yuyalma: agregá, editá, actualizá precios y exportá la lista lista para compartir.'
+    : 'Consultá la lista de precios de Yuyalma y filtrá por categoría.';
+  const adminToggle = document.getElementById('adminToggle');
+  if(adminToggle) adminToggle.textContent = admin ? '🔓 Salir de modo administrador' : '🔒 Modo administrador';
+  if(!admin){ state.selected.clear(); }
+}
 function todayStr(){
   const d = new Date();
   return d.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' }) + ' ' +
@@ -1255,6 +1307,27 @@ function subscribeRealtime(){
 // Arranque: pinta rápido con lo que haya en el equipo (o la semilla), y
 // después consulta Supabase para traer la versión más reciente.
 async function init(){
+  setUIMode();
+  document.getElementById('adminToggle').addEventListener('click', ()=>{
+    if(isAdmin()){
+      localStorage.removeItem(ADMIN_KEY);
+      setUIMode();
+      renderAll();
+      toast('Volviste a la vista de cliente');
+      return;
+    }
+    const pin = prompt('Ingresá la contraseña de administrador:');
+    if(pin === null) return; // cancelado
+    if(pin === ADMIN_PIN){
+      localStorage.setItem(ADMIN_KEY, '1');
+      setUIMode();
+      renderAll();
+      toast('Modo administrador activado');
+    }else{
+      toast('Contraseña incorrecta', true);
+    }
+  });
+
   const hadLocal = loadLocal();
   const seeded = seedIfEmpty();
   renderAll();
@@ -1380,6 +1453,7 @@ function trendOf(p){
 let priceEditTimers = {};
 
 function renderTable(){
+  const admin = isAdmin();
   const list = getFilteredSorted();
   const tbody = document.getElementById('tableBody');
   const empty = document.getElementById('emptyState');
@@ -1396,35 +1470,42 @@ function renderTable(){
         ? `<span class="trend ${trend}">${trend==='up'?'▲':'▼'}</span>`
         : '';
       const checked = state.selected.has(p.id) ? 'checked' : '';
+      const checkboxCell = admin
+        ? `<td class="center"><input type="checkbox" class="checkbox row-check" data-id="${p.id}" ${checked}></td>`
+        : '';
+      const priceCell = admin
+        ? `<td class="num"><input type="number" class="price-input row-price-input" data-id="${p.id}" value="${p.precio}" min="0" step="1"></td>`
+        : `<td class="num"><span class="price-cell">${money(p.precio)}</span></td>`;
+      const actionsCell = admin
+        ? `<td class="num">
+            <div class="row-actions">
+              <button class="icon-btn" title="Historial de precios" data-action="history" data-id="${p.id}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+              </button>
+              <button class="icon-btn" title="Editar" data-action="edit" data-id="${p.id}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              </button>
+              <button class="icon-btn danger" title="Eliminar" data-action="delete" data-id="${p.id}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6h16z"/></svg>
+              </button>
+            </div>
+          </td>`
+        : '';
       return `<tr data-id="${p.id}">
-        <td class="center"><input type="checkbox" class="checkbox row-check" data-id="${p.id}" ${checked}></td>
+        ${checkboxCell}
         <td>
           <div class="prod-name">${escapeHtml(p.nombre)}</div>
           <div class="prod-pres">${escapeHtml(p.presentacion||'')}</div>
         </td>
         <td><span class="cat-pill">${escapeHtml(p.categoria)}</span></td>
-        <td class="num">
-          <input type="number" class="price-input row-price-input" data-id="${p.id}" value="${p.precio}" min="0" step="1">
-        </td>
+        ${priceCell}
         <td class="center">${trendHtml}</td>
-        <td class="num">
-          <div class="row-actions">
-            <button class="icon-btn" title="Historial de precios" data-action="history" data-id="${p.id}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-            </button>
-            <button class="icon-btn" title="Editar" data-action="edit" data-id="${p.id}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            </button>
-            <button class="icon-btn danger" title="Eliminar" data-action="delete" data-id="${p.id}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6h16z"/></svg>
-            </button>
-          </div>
-        </td>
+        ${actionsCell}
       </tr>`;
     }).join('');
   }
 
-  // bind row events
+  // bind row events (no-ops in client mode: the elements simply aren't rendered)
   tbody.querySelectorAll('.row-check').forEach(cb=>{
     cb.addEventListener('change', ()=>{
       const id = Number(cb.getAttribute('data-id'));
@@ -1456,8 +1537,10 @@ function renderTable(){
 }
 
 function updateSelectAllState(){
+  if(!isAdmin()) return;
   const list = getFilteredSorted();
   const all = document.getElementById('selectAll');
+  if(!all) return;
   if(!list.length){ all.checked = false; all.indeterminate = false; return; }
   const selCount = list.filter(p=>state.selected.has(p.id)).length;
   all.checked = selCount === list.length;
@@ -1466,6 +1549,7 @@ function updateSelectAllState(){
 
 function updateBulkBar(){
   const bar = document.getElementById('bulkBar');
+  if(!isAdmin()){ bar.classList.remove('show'); return; }
   const count = state.selected.size;
   document.getElementById('bulkSelCount').textContent = count;
   bar.classList.toggle('show', count > 0);
