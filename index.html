@@ -2,8 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Yuyalma · Lista de Precios</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"><title>Yuyalma · Lista de Precios</title>
 <style>
 :root{
   --oliva-950:#1f2818;
@@ -611,6 +610,19 @@ table.price-table{
   font-weight:700;
   letter-spacing:.04em;
   color: var(--oliva-700);
+}
+
+/* Evita el desborde horizontal que hace que el celu abra con zoom */
+html, body{
+  max-width:100%;
+  overflow-x:hidden;
+}
+.app{ min-width:0; }
+.main{ min-width:0; max-width:100%; }
+.table-wrap{
+  max-width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
 }
 
 @media (max-width: 880px){
